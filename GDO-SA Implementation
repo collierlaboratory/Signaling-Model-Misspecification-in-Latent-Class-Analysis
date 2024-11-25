@@ -1,0 +1,310 @@
+#Code for GDO-SA for misspecification
+
+from sklearn.preprocessing import LabelEncoder
+from sklearn.mixture import GaussianMixture
+import numpy as np
+import matplotlib.pyplot as plt
+
+from google.colab import files
+import numpy as np
+import io
+
+import numpy as np
+
+def objective_function(params):
+    class_probs = params[:nclass]  # Extract class probabilities from parameters
+
+    desired_shape = (len(df), nclass)
+
+    # Reshape the array with random values if shape mismatch
+    if class_probs.size != np.prod(desired_shape):
+        # Calculate the required size
+        required_size = np.prod(desired_shape)
+
+        # If the original array size is smaller, resize and fill with random values
+        if class_probs.size < required_size:
+            class_probs = np.resize(class_probs, required_size)
+        class_probs = np.random.rand(*desired_shape)  # Fill with random values
+    else:
+        # If the original array size is larger, reshape and truncate
+        class_probs = np.resize(class_probs, desired_shape)
+
+    response_probs = np.array(class_probs).reshape((len(df), nclass))
+
+    log_likelihood = np.sum(df[observed_variables].values[:nclass, :nclass] * np.log(response_probs.T @ class_probs))
+
+    # Calculate the entropy term
+    entropy = np.sum(response_probs * np.log(response_probs))
+
+    relative_entropy = log_likelihood - entropy
+
+    return relative_entropy
+
+
+# Compute the gradient of the objective function
+def compute_gradient(params):
+  class_probs = params[:nclass]  # Extract class probabilities from parameters
+
+
+  desired_shape = (len(df), nclass)
+
+  # Reshape the array with random values if shape mismatch
+  if class_probs.size != np.prod(desired_shape):
+    # Calculate the required size
+    required_size = np.prod(desired_shape)
+
+    # If the original array size is smaller, resize and fill with random values
+    if class_probs.size < required_size:
+      class_probs = np.resize(class_probs, required_size)
+    class_probs = np.random.rand(*desired_shape)  # Fill with random values
+  else:
+    # If the original array size is larger, reshape and truncate
+    class_probs = np.resize(class_probs, desired_shape)
+    print(class_probs)
+
+  response_probs = np.array(class_probs).reshape((len(df), nclass))
+  # Select the first five columns from the DataFrame df
+  subset_df = df.iloc[:, :5]
+
+# Convert the selected subset of columns into a NumPy array and transpose it
+  observed = subset_df.values.T
+
+  class_gradient = np.sum(observed, axis=1)[:nclass] - np.sum(
+    response_probs[:nclass, :nclass] @ np.outer(class_probs[:nclass, :nclass], np.ones(len(df)))[:nclass, :nclass],
+    axis=1)
+  response_gradient = np.sum(observed @ class_probs, axis=0) - np.sum(
+    response_probs[:nclass, :] * np.outer(np.ones(nclass), np.ones(nclass)), axis=0)
+  # Remove NaN values by replacing them with 0
+  response_gradient = np.nan_to_num(response_gradient, nan=0)
+
+
+  gradient = np.concatenate((class_gradient, response_gradient))
+
+  return -gradient
+
+
+# Specify the number of latent classes
+nclass = 5
+
+# Perform Latent Class Analysis (LCA) using Gaussian Mixture Model (GMM)
+lca_model = GaussianMixture(n_components=nclass)
+
+# Fit the LCA model to the encoded data
+lca_model = lca_model.fit(data_encoded)
+print(lca_model.bic(data_encoded))
+
+# Specify initial parameters, learning rate, and number of iterations
+initial_params = np.concatenate((np.ones(nclass) / nclass, lca_model.weights_.flatten()))[:nclass * 2]
+learning_rate = 0.8
+num_iterations = 20
+
+losses = []
+#compute_gradient(initial_params)
+
+
+class_probs = initial_params[:nclass]  # Extract class probabilities from parameters
+#print(class_probs)
+
+
+desired_shape = (len(df), nclass)
+#print(desired_shape)
+
+# Reshape the array with random values if shape mismatch
+if class_probs.size != np.prod(desired_shape):
+    # Calculate the required size
+  required_size = np.prod(desired_shape)
+
+    # If the original array size is smaller, resize and fill with random values
+if class_probs.size < required_size:
+  class_probs = np.resize(class_probs, required_size)
+  class_probs = np.random.rand(*desired_shape)  # Fill with random values
+else:
+    # If the original array size is larger, reshape and truncate
+  class_probs = np.resize(class_probs, desired_shape)
+
+response_probs = np.array(class_probs).reshape((len(df), nclass))
+print(class_probs)
+# Select the first five columns from the DataFrame df
+subset_df = df.iloc[:, :5]
+
+# Convert the selected subset of columns into a NumPy array and transpose it
+observed = subset_df.values.T
+#observed = df[observed_variables].values.T
+#print(observed)
+
+
+class_gradient = np.sum(observed, axis=1)[:nclass] - np.sum(
+  response_probs[:nclass, :nclass] @ np.outer(class_probs[:nclass, :nclass], np.ones(len(df)))[:nclass, :nclass],
+  axis=1)
+response_gradient = np.sum(observed @ class_probs, axis=0) - np.sum(
+    response_probs[:nclass, :] * np.outer(np.ones(nclass), np.ones(nclass)), axis=0)
+
+print(response_gradient)
+
+#gradient = np.concatenate((class_gradient, response_gradient))
+#print(gradient)
+
+#class_probs.shape
+#observed.shape
+
+
+
+
+from scipy.spatial import distance
+
+# Adjusted hyperparameters
+num_iterations = 100  # Increase the number of iterations for more optimization steps
+learning_rate = 0.001  # Initial learning rate
+beta = 0.9  # RMSprop parameter
+epsilon = 1e-8  # RMSprop parameter
+nclass = 5  # Number of latent classes
+
+# Placeholder to store losses for each iteration
+losses = []
+
+# Specify initial parameters using Gaussian Mixture Model (GMM) from sklearn
+lca_model = GaussianMixture(n_components=nclass)
+lca_model = lca_model.fit(data_encoded)
+initial_params = np.concatenate((np.ones(nclass) / nclass, lca_model.weights_.flatten()))[:nclass * 2]
+
+# Make a copy of initial_params
+optimized_params = initial_params.copy()
+
+# Initialize squared gradient accumulator
+squared_gradient = np.zeros_like(initial_params)
+
+# Gradient descent optimization loop with RMSprop and early stopping
+best_loss = float('inf')
+patience = 10  # Number of iterations to wait for improvement before stopping
+wait_count = 0
+
+for i in range(num_iterations):
+    # Calculate loss and store it
+    loss = objective_function(optimized_params)
+    print("Iteration:", i, "Loss function value:", loss)
+    losses.append(loss)
+
+    # Check for early stopping
+    if loss < best_loss:
+        best_loss = loss
+        wait_count = 0
+    else:
+        wait_count += 1
+        if wait_count >= patience:
+            print("No improvement for", patience, "iterations. Stopping optimization.")
+            break
+
+    # Compute gradient using the gradient computation function
+    gradient = compute_gradient(optimized_params)
+
+    # Update squared gradient accumulator with RMSprop
+    squared_gradient = beta * squared_gradient + (1 - beta) * gradient ** 2
+
+    # Update parameters using RMSprop
+    optimized_params -= learning_rate * gradient / (np.sqrt(squared_gradient) + epsilon)
+
+# Plot the losses for each iteration
+plt.rcParams.update({'font.size': 25})
+fig, ax = plt.subplots()
+plt.plot(range(1, len(losses) + 1), losses, color='black')  # Set line color to blue
+ax.set_xlabel('Iteration')
+ax.set_ylabel('Loss')
+
+# Set background color to grey
+ax.set_facecolor('white')
+
+plt.show()
+
+# Compute cosine similarity between initial and optimized parameters
+cosine_sim = 1 - distance.cosine(initial_params, optimized_params)
+print("Cosine Similarity between initial and optimized parameters:", cosine_sim)
+
+# Compute relative entropy (KL divergence) between initial and optimized parameters
+relative_entropy = np.sum(initial_params * np.log(initial_params / optimized_params))
+print("Relative Entropy (KL Divergence) between initial and optimized parameters:", relative_entropy)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#Code for GDO-SA for class enumeration
+
+from sklearn.preprocessing import LabelEncoder
+from sklearn.mixture import GaussianMixture
+from sklearn.metrics import silhouette_score
+from scipy.stats import entropy
+import numpy as np
+import matplotlib.pyplot as plt
+import pandas as pd
+import io
+from google.colab import files
+
+# Remove the first column from the DataFrame
+df = df.iloc[:, 1:]
+
+# Convert categorical columns to numeric using LabelEncoder
+for col in df.select_dtypes(include=['object']).columns:
+    le = LabelEncoder()
+    df[col] = le.fit_transform(df[col].astype(str))
+
+# Convert to numeric-only data and optimize data types
+X = df.select_dtypes(include=[np.number]).dropna().astype(np.float32).values  # Use float32 to save memory
+
+# KL Divergence function with optimized bins
+def kl_divergence(X, n_components, n_bins=10):
+    gmm = GaussianMixture(n_components=n_components, random_state=42)
+    gmm.fit(X)
+
+    q_model = np.exp(gmm.score_samples(X))
+    q_model /= np.sum(q_model)
+
+    # Estimate p_empirical with reduced bins
+    p_empirical, _ = np.histogramdd(X, bins=n_bins, density=True)
+    p_empirical = p_empirical.ravel()
+    p_empirical /= np.sum(p_empirical)
+
+    # Resample q_model to match p_empirical length
+    q_model_resampled = np.interp(np.linspace(0, len(X) - 1, len(p_empirical)), np.arange(len(q_model)), q_model)
+    return entropy(p_empirical, q_model_resampled)
+
+# Component Optimization 
+def optimize_components(X, max_components=5, lr=0.01, n_iterations=50):
+    best_n_components = 1
+    best_kl_divergence = float('inf')
+
+    for n_components in range(1, max_components + 1):
+        kl_div = kl_divergence(X, n_components)
+        print(f'Components: {n_components}, Initial KL Divergence: {kl_div}')
+
+        for iteration in range(n_iterations):
+            adjusted_kl_div = kl_div * (1 - lr)
+            kl_div = adjusted_kl_div
+
+            if kl_div < best_kl_divergence:
+                best_kl_divergence = kl_div
+                best_n_components = n_components
+
+            if iteration % 10 == 0:
+                print(f'Iteration {iteration}, Components: {n_components}, KL Divergence: {kl_div}')
+
+    return best_n_components, best_kl_divergence
+
+# Main Execution
+if __name__ == "__main__":
+    optimal_components, optimal_kl_divergence = optimize_components(X, max_components=5)
+    print(f'Optimal number of components: {optimal_components}, Optimal KL Divergence: {optimal_kl_divergence}')
